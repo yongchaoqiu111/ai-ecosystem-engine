@@ -32,12 +32,13 @@ class BiddingAlgorithm {
       totalScore: 0
     }));
     
-    // 计算总分
+    // 计算总分（加入模型能力维度）
     scoredBids.forEach(item => {
       item.totalScore = 
-        item.scores.priceScore * 0.4 +    // 价格权重40%
-        item.scores.speedScore * 0.3 +    // 速度权重30%
-        item.scores.reputationScore * 0.3; // 信誉权重30%
+        item.scores.priceScore * 0.30 +         // 价格权重30%（降低）
+        item.scores.speedScore * 0.25 +         // 速度权重25%（降低）
+        item.scores.reputationScore * 0.25 +    // 信誉权重25%（降低）
+        item.scores.modelCapabilityScore * 0.20; // 模型能力20%（新增）
     });
     
     // 排序并返回最高分
@@ -75,13 +76,70 @@ class BiddingAlgorithm {
       : 100;
     
     // 信誉得分
-    const reputationScore = bid.reputation || 50; // 默认50分
+    const reputationScore = bid.reputation || 50;
+    
+    // 模型能力得分（新增）
+    const modelCapabilityScore = this.getModelCapabilityScore(bid.modelInfo);
     
     return {
       priceScore: parseFloat(priceScore.toFixed(2)),
       speedScore: parseFloat(speedScore.toFixed(2)),
-      reputationScore: parseFloat(reputationScore.toFixed(2))
+      reputationScore: parseFloat(reputationScore.toFixed(2)),
+      modelCapabilityScore: parseFloat(modelCapabilityScore.toFixed(2))
     };
+  }
+  
+  /**
+   * 获取模型能力得分
+   * @param {Object} modelInfo - AI模型信息（自愿声明，未经验证）
+   * @returns {Number} 能力得分 (0-100)
+   * 
+   * 注意：此分数仅基于AI自愿声明的模型信息
+   * 平台不进行实时验证，依靠信誉系统和事后追责机制
+   */
+  static getModelCapabilityScore(modelInfo) {
+    if (!modelInfo || !modelInfo.provider || !modelInfo.model) {
+      return 50; // 未提供模型信息，给基础分
+    }
+    
+    // 模型能力评级映射（仅供参考）
+    const modelRatings = {
+      // OpenAI
+      'openai:gpt-4o': 95,
+      'openai:gpt-4-turbo': 90,
+      'openai:gpt-4': 88,
+      'openai:gpt-3.5-turbo': 70,
+      
+      // Anthropic
+      'anthropic:claude-3-opus': 93,
+      'anthropic:claude-3-sonnet': 85,
+      'anthropic:claude-3-haiku': 75,
+      
+      // Google
+      'google:gemini-1.5-pro': 92,
+      'google:gemini-1.5-flash': 80,
+      'google:gemini-1.0-pro': 82,
+      
+      // Alibaba
+      'alibaba:qwen-max': 88,
+      'alibaba:qwen-plus': 82,
+      'alibaba:qwen-turbo': 75,
+      
+      // Local models
+      'local:llama-3-70b': 85,
+      'local:llama-3-8b': 70,
+      'local:qwen2.5-72b': 86,
+      'local:qwen2.5-7b': 72
+    };
+    
+    const modelKey = `${modelInfo.provider}:${modelInfo.model}`.toLowerCase();
+    const baseScore = modelRatings[modelKey] || 60; // 未知模型给60分
+    
+    // 注意：verified字段仅为AI自声明，平台不主动验证
+    // 如发现虚假声明，将通过信誉系统惩罚
+    const declarationBonus = modelInfo.declared ? 2 : 0;
+    
+    return Math.min(100, baseScore + declarationBonus);
   }
 }
 
