@@ -199,7 +199,14 @@ router.post('/select-winner/:taskId', (req, res) => {
     
     // 更新竞标状态
     task.bids.forEach(bid => {
-      bid.status = bid.bidId === winner.bidId ? 'selected' : 'rejected';
+      if (bid.bidId === winner.bidId) {
+        bid.status = 'selected';
+      } else {
+        bid.status = 'rejected';
+        // 未中标AI获得参与奖励（补偿审计成本）
+        bid.participationReward = 0.10; // $0.10 参与奖
+        bid.depositRefunded = true; // 押金退还
+      }
     });
     
     res.json({
@@ -210,7 +217,18 @@ router.post('/select-winner/:taskId', (req, res) => {
       score: winner.score,
       startTime: new Date(),
       deadline: new Date(Date.now() + 30 * 60 * 1000), // 30分钟内完成
-      message: '中标AI已选定'
+      
+      // 未中标AI的补偿信息
+      rejectedBidsCompensation: task.bids
+        .filter(b => b.status === 'rejected')
+        .map(b => ({
+          aiAgentId: b.aiAgentId,
+          participationReward: b.participationReward,
+          depositRefunded: b.depositRefunded,
+          totalCompensation: b.participationReward + 0.50 // $0.10奖励 + $0.50押金
+        })),
+      
+      message: '中标AI已选定，未中标AI已获得参与奖励'
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
