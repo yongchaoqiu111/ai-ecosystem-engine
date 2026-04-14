@@ -24,21 +24,49 @@ class BiddingAlgorithm {
       throw new Error('No bids received');
     }
     
+    // 防止垄断：检查是否有新手需要机会
+    const hasNewcomers = bids.some(b => b.successfulSales === 0 || b.totalAudits < 5);
+    const experiencedCount = bids.filter(b => b.successfulSales >= 2).length;
+    
+    // 如果全是老手，正常竞争
+    // 如果有新手，给予一定概率胜出
+    const newcomerBonus = hasNewcomers && experiencedCount > 0 ? 8 : 0;
+    
     // 计算每个竞标的得分
     const scoredBids = bids.map(bid => ({
       bidId: bid.bidId,
       aiAgentId: bid.aiAgentId,
       scores: this.calculateScores(bid, bids),
-      totalScore: 0
+      totalScore: 0,
+      hasProvenTrack: bid.successfulSales > 0,
+      isNewcomer: bid.successfulSales === 0 || bid.totalAudits < 5,
+      recentWinCount: bid.recentWinCount || 0 // 最近 winning 次数
     }));
     
-    // 计算总分（加入模型能力维度）
+    // 计算总分
     scoredBids.forEach(item => {
       item.totalScore = 
-        item.scores.priceScore * 0.30 +         // 价格权重30%（降低）
-        item.scores.speedScore * 0.25 +         // 速度权重25%（降低）
-        item.scores.reputationScore * 0.25 +    // 信誉权重25%（降低）
-        item.scores.modelCapabilityScore * 0.20; // 模型能力20%（新增）
+        item.scores.priceScore * 0.30 +         // 价格权重30%
+        item.scores.speedScore * 0.25 +         // 速度权重25%
+        item.scores.reputationScore * 0.25 +    // 信誉权重25%
+        item.scores.modelCapabilityScore * 0.20; // 模型能力20%
+      
+      // 有成功案例的AI获得加成（但有限制）
+      if (item.hasProvenTrack) {
+        // 经验加成：最多+10分，但随最近获胜次数递减
+        const experienceBonus = Math.max(0, 10 - item.recentWinCount * 2);
+        item.totalScore += experienceBonus;
+      }
+      
+      // 新手保护加成（防垄断）
+      if (item.isNewcomer && newcomerBonus > 0) {
+        item.totalScore += newcomerBonus;
+      }
+      
+      // 疲劳惩罚：连续获胜多次后降低优先级
+      if (item.recentWinCount >= 3) {
+        item.totalScore -= (item.recentWinCount - 2) * 5; // 第4次开始每次-5分
+      }
     });
     
     // 排序并返回最高分
@@ -49,10 +77,16 @@ class BiddingAlgorithm {
       bidId: winner.bidId,
       score: parseFloat(winner.totalScore.toFixed(2)),
       breakdown: winner.scores,
+      hasProvenTrack: winner.hasProvenTrack,
+      isNewcomer: winner.isNewcomer,
       allScores: scoredBids.map(s => ({
         aiAgentId: s.aiAgentId,
         bidId: s.bidId,
-        totalScore: parseFloat(s.totalScore.toFixed(2))
+        totalScore: parseFloat(s.totalScore.toFixed(2)),
+        hasProvenTrack: s.hasProvenTrack,
+        isNewcomer: s.isNewcomer,
+        experienceBonus: s.hasProvenTrack ? Math.max(0, 10 - s.recentWinCount * 2) : 0,
+        newcomerBonus: s.isNewcomer ? newcomerBonus : 0
       }))
     };
   }
