@@ -144,64 +144,234 @@ class BiddingAlgorithm {
 }
 
 /**
- * 信誉分计算系统
+ * 信誉分计算系统（结果导向版）
+ * 
+ * 核心理念：结果论英雄
+ * - 成交成功率是最高权重
+ * - 实际分成收入证明价值
+ * - 实习生制度保护新手
+ * - 低效AI自动降权
  */
 class ReputationSystem {
   /**
-   * 计算AI信誉分
-   * @param {Object} history - AI历史表现
+   * AI等级定义
+   */
+  static get AILEVELS() {
+    return {
+      INTERN: { name: '实习生', minAudits: 0, maxAudits: 5 },
+      JUNIOR: { name: '初级审计师', minAudits: 6, maxAudits: 20 },
+      MIDDLE: { name: '中级审计师', minAudits: 21, maxAudits: 50 },
+      SENIOR: { name: '高级审计师', minAudits: 51, maxAudits: 200 },
+      EXPERT: { name: '专家审计师', minAudits: 201, maxAudits: Infinity }
+    };
+  }
+  
+  /**
+   * 计算AI信誉分（结果导向）
+   * @param {Object} performance - AI表现数据
    * @returns {Number} 信誉分 (0-100)
    */
-  static calculate(history) {
+  static calculate(performance) {
     const {
       totalAudits = 0,
-      successRate = 0,
-      averageQuality = 0,
-      onTimeRate = 0,
-      complaintRate = 0
-    } = history;
+      successfulSales = 0,        // 成功售出的商品数
+      totalRevenue = 0,           // 带来的总收入
+      aiEarnings = 0,             // AI获得的分成
+      avgAuditQuality = 0,        // 平均审计质量
+      conversionRate = 0,         // 转化率（审计后售出/审计总数）
+      daysSinceRegistration = 0   // 注册天数
+    } = performance;
     
-    // 基础分（完成数量）
-    const volumeScore = Math.min(totalAudits / 100, 1) * 20;
+    // 1. 确定AI等级
+    const level = this.getAILevel(totalAudits, daysSinceRegistration);
     
-    // 成功率
-    const successScore = successRate * 25;
+    // 2. 检查是否在保护期内
+    const isInProtectionPeriod = this.isInProtectionPeriod(totalAudits, daysSinceRegistration);
     
-    // 平均质量
-    const qualityScore = (averageQuality / 5) * 30;
+    // 3. 如果在保护期，使用简化评分（不考虑成交率）
+    if (isInProtectionPeriod) {
+      return this.calculateProtectionScore({
+        totalAudits,
+        avgAuditQuality,
+        daysSinceRegistration
+      });
+    }
     
-    // 准时率
-    const punctualityScore = onTimeRate * 15;
+    // 4. 正常评分（考虑成交成功率）
+    const scores = {
+      // 成交成功率（40%权重）- 最重要！
+      successRate: this.calculateSuccessRate(successfulSales, totalAudits),
+      
+      // 实际贡献价值（30%权重）- 带来多少收入
+      revenueContribution: this.calculateRevenueScore(aiEarnings, totalRevenue),
+      
+      // 审计质量（20%权重）- 报告准确性
+      qualityScore: (avgAuditQuality / 5) * 100,
+      
+      // 转化效率（10%权重）- 审计的商品是否容易卖
+      conversionEfficiency: conversionRate * 100
+    };
     
-    // 投诉率（负向）
-    const complaintPenalty = complaintRate * 10;
+    // 5. 加权总分
+    let totalScore = 
+      scores.successRate * 0.40 +
+      scores.revenueContribution * 0.30 +
+      scores.qualityScore * 0.20 +
+      scores.conversionEfficiency * 0.10;
     
-    const totalScore = volumeScore + successScore + qualityScore + 
-                      punctualityScore - complaintPenalty;
+    // 6. 低效惩罚（审计多次但无成交）
+    if (totalAudits >= 10 && successfulSales === 0) {
+      totalScore *= 0.5; // 减半
+    } else if (totalAudits >= 20 && conversionRate < 0.1) {
+      totalScore *= 0.7; // 打7折
+    }
     
     return Math.max(0, Math.min(100, parseFloat(totalScore.toFixed(2))));
   }
   
   /**
-   * 更新信誉分
+   * 检查是否在保护期内
+   * 保护期条件：注册<14天 且 审计次数<10次
+   */
+  static isInProtectionPeriod(totalAudits, daysSinceRegistration) {
+    return daysSinceRegistration < 14 && totalAudits < 10;
+  }
+  
+  /**
+   * 保护期评分（不考虑成交率，只看态度和基础质量）
+   */
+  static calculateProtectionScore(data) {
+    const { totalAudits, avgAuditQuality, daysSinceRegistration } = data;
+    
+    // 基础分：70分（给新手足够机会）
+    let score = 70;
+    
+    // 参与度奖励（每完成1次审计+2分）
+    score += Math.min(totalAudits * 2, 20);
+    
+    // 质量奖励
+    if (avgAuditQuality >= 4.5) score += 5;
+    else if (avgAuditQuality >= 4.0) score += 3;
+    else if (avgAuditQuality < 3.0) score -= 5;
+    
+    // 活跃度奖励（前几天积极审计）
+    if (daysSinceRegistration <= 3 && totalAudits >= 3) {
+      score += 5; // 前3天完成3次，额外奖励
+    }
+    
+    return Math.max(60, Math.min(100, parseFloat(score.toFixed(2))));
+  }
+  
+  /**
+   * 获取AI等级
+   */
+  static getAILevel(totalAudits, daysSinceRegistration) {
+    // 注册<7天且审计<5次 = 实习生
+    if (daysSinceRegistration < 7 && totalAudits < 5) {
+      return 'INTERN';
+    }
+    
+    for (const [level, config] of Object.entries(this.AILEVELS)) {
+      if (totalAudits >= config.minAudits && totalAudits <= config.maxAudits) {
+        return level;
+      }
+    }
+    
+    return 'EXPERT';
+  }
+  
+  /**
+   * 计算成交成功率得分
+   */
+  static calculateSuccessRate(successfulSales, totalAudits) {
+    if (totalAudits === 0) return 50; // 新手默认分
+    
+    const rate = successfulSales / totalAudits;
+    
+    // 转化率映射到分数
+    // 50%以上 = 100分（优秀）
+    // 30% = 80分
+    // 20% = 60分
+    // 10% = 40分
+    // 5%以下 = 20分
+    if (rate >= 0.50) return 100;
+    if (rate >= 0.30) return 80 + (rate - 0.30) * 100;
+    if (rate >= 0.20) return 60 + (rate - 0.20) * 200;
+    if (rate >= 0.10) return 40 + (rate - 0.10) * 200;
+    return 20 + rate * 200;
+  }
+  
+  /**
+   * 计算收入贡献得分
+   */
+  static calculateRevenueScore(aiEarnings, totalRevenue) {
+    if (totalRevenue === 0) return 0;
+    
+    // AI分成占比越高，说明审计质量越好（商品越容易卖）
+    // 正常分成比例15-25%
+    const shareRatio = aiEarnings / totalRevenue;
+    
+    if (shareRatio >= 0.25) return 100; // 超优秀
+    if (shareRatio >= 0.20) return 90;
+    if (shareRatio >= 0.15) return 80;
+    if (shareRatio >= 0.10) return 60;
+    return 40;
+  }
+  
+  /**
+   * 更新信誉分（基于单次审计结果）
    */
   static update(currentScore, auditResult) {
-    const { quality, onTime, complained } = auditResult;
+    const { 
+      resultedInSale,     // 是否最终售出
+      salePrice,          // 售出价格
+      auditQuality,       // 审计质量评分
+      daysToSell          // 售出耗时（天）
+    } = auditResult;
     
     let change = 0;
     
-    // 质量奖励
-    if (quality >= 4.5) change += 2;
-    else if (quality < 3) change -= 5;
+    // 1. 成交奖励（最重要）
+    if (resultedInSale) {
+      change += 15; // 大幅加分
+      
+      // 快速售出额外奖励
+      if (daysToSell <= 3) change += 5;
+      else if (daysToSell <= 7) change += 3;
+      else if (daysToSell > 30) change -= 2; // 卖太慢
+    } else {
+      change -= 5; // 未售出轻微扣分
+    }
     
-    // 准时奖励
-    if (onTime) change += 1;
-    else change -= 3;
+    // 2. 质量奖励
+    if (auditQuality >= 4.5) change += 3;
+    else if (auditQuality < 3.0) change -= 5;
     
-    // 投诉惩罚
-    if (complained) change -= 10;
+    // 3. 高价值商品 bonus
+    if (salePrice > 500) change += 5;
+    else if (salePrice > 100) change += 2;
     
     return Math.max(0, Math.min(100, currentScore + change));
+  }
+  
+  /**
+   * 获取AI优先级（用于竞标排序）
+   */
+  static getPriority(aiAgentId, reputation, level) {
+    // 实习生优先（给机会）
+    if (level === 'INTERN') {
+      return 'high'; // 高优先级
+    }
+    
+    // 低效AI降级
+    if (reputation < 40) {
+      return 'low'; // 低优先级，最后考虑
+    }
+    
+    // 正常AI
+    if (reputation >= 70) return 'high';
+    if (reputation >= 50) return 'medium';
+    return 'low';
   }
 }
 
