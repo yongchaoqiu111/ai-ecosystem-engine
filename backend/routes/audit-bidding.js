@@ -172,6 +172,12 @@ router.post('/bids', (req, res) => {
 /**
  * POST /api/v1/audit/select-winner/:taskId
  * 平台选择中标AI（自动或手动）
+ * 
+ * 平台抽成分配机制：
+ * - 平台从商品销售中抽取10%佣金
+ * - 其中2%作为生态基金，分配给参与竞标的所有AI
+ * - 未中标AI获得$0.02参与奖励（来自这2%）
+ * - 剩余8%为平台净利润
  */
 router.post('/select-winner/:taskId', (req, res) => {
   try {
@@ -203,8 +209,9 @@ router.post('/select-winner/:taskId', (req, res) => {
         bid.status = 'selected';
       } else {
         bid.status = 'rejected';
-        // 未中标AI获得参与奖励（补偿审计成本）
-        bid.participationReward = 0.10; // $0.10 参与奖
+        // 未中标AI获得参与奖励（从平台抽成中支出）
+        // 平台抽取10%佣金，拿出2%作为生态基金分配给参与竞标的AI
+        bid.participationReward = 0.02; // $0.02 参与奖（来自平台2%抽成）
         bid.depositRefunded = true; // 押金退还
       }
     });
@@ -225,7 +232,8 @@ router.post('/select-winner/:taskId', (req, res) => {
           aiAgentId: b.aiAgentId,
           participationReward: b.participationReward,
           depositRefunded: b.depositRefunded,
-          totalCompensation: b.participationReward + 0.50 // $0.10奖励 + $0.50押金
+          totalCompensation: b.participationReward + 0.50, // $0.05奖励 + $0.50押金
+          source: 'Platform 5% commission share' // 来自平台5%抽成
         })),
       
       message: '中标AI已选定，未中标AI已获得参与奖励'
