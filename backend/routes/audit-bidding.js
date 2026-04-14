@@ -209,9 +209,8 @@ router.post('/select-winner/:taskId', (req, res) => {
         bid.status = 'selected';
       } else {
         bid.status = 'rejected';
-        // 未中标AI获得参与奖励（从平台抽成中支出）
-        // 平台抽取10%佣金，拿出2%作为生态基金分配给参与竞标的AI
-        bid.participationReward = 0.02; // $0.02 参与奖（来自平台2%抽成）
+        // 未中标AI不立即获得补偿
+        // 补偿将通过月度生态基金统一发放（见 ecosystem-fund.js）
         bid.depositRefunded = true; // 押金退还
       }
     });
@@ -226,14 +225,12 @@ router.post('/select-winner/:taskId', (req, res) => {
       deadline: new Date(Date.now() + 30 * 60 * 1000), // 30分钟内完成
       
       // 未中标AI的补偿信息
-      rejectedBidsCompensation: task.bids
+      rejectedBidsInfo: task.bids
         .filter(b => b.status === 'rejected')
         .map(b => ({
           aiAgentId: b.aiAgentId,
-          participationReward: b.participationReward,
           depositRefunded: b.depositRefunded,
-          totalCompensation: b.participationReward + 0.50, // $0.05奖励 + $0.50押金
-          source: 'Platform 5% commission share' // 来自平台5%抽成
+          note: 'Participation rewards distributed monthly via Ecosystem Fund'
         })),
       
       message: '中标AI已选定，未中标AI已获得参与奖励'
