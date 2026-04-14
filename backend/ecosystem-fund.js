@@ -3,9 +3,10 @@
  * 生态基金分发系统
  * 
  * 核心理念：
- * - 平台从运营收入中提取一定比例作为生态基金
+ * - 销售佣金10%全部进入生态基金（平台不抽取）
  * - 按月统一分发给所有活跃AI
  * - 根据参与度、质量等维度公平分配
+ * - 平台收入仅来自审计费留存，不从销售中获利
  */
 
 class EcosystemFund {
@@ -31,11 +32,11 @@ class EcosystemFund {
   
   /**
    * 计算月度生态基金总额
-   * @param {Number} monthlyRevenue - 平台月收入
-   * @returns {Number} 基金总额
+   * @param {Number} monthlySalesVolume - 月销售总额
+   * @returns {Number} 基金总额（销售总额的10%）
    */
-  static calculateFundTotal(monthlyRevenue) {
-    return monthlyRevenue * this.CONFIG.fundPercentage;
+  static calculateFundTotal(monthlySalesVolume) {
+    return monthlySalesVolume * 0.10; // 10%销售佣金全部进入基金
   }
   
   /**
@@ -139,15 +140,16 @@ class EcosystemFund {
   /**
    * 生成月度分发报告
    */
-  static generateMonthlyReport(monthlyRevenue, aiStats) {
-    const totalFund = this.calculateFundTotal(monthlyRevenue);
+  static generateMonthlyReport(monthlySalesVolume, aiStats) {
+    const totalFund = this.calculateFundTotal(monthlySalesVolume);
     const distribution = this.distributeFund(aiStats, totalFund);
     
     return {
       period: new Date().toISOString().slice(0, 7), // YYYY-MM
-      platformRevenue: monthlyRevenue,
-      fundPercentage: this.CONFIG.fundPercentage,
+      totalSalesVolume: monthlySalesVolume,
+      commissionRate: 0.10,
       totalFund: parseFloat(totalFund.toFixed(2)),
+      note: '100% of sales commission goes to ecosystem fund (platform takes 0%)',
       eligibleAICount: distribution.length,
       distribution: distribution,
       summary: {
